@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <time.h>
 
 #define PORT 8080
 #define MAX_CLIENTS 10
@@ -11,6 +13,7 @@
 
 int client_sockets[MAX_CLIENTS]; //10명 까지 들어올 수 있음, 소켓 디스크립터 배열
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //쓰레드 간에 공유 데이터 동기화를 위해 사용, mutex초기화
+int fd = 0;
 
 void *handle_client(void *arg) {
     //인자는 클라이언트 소켓 디스크립터 주소
@@ -22,7 +25,7 @@ void *handle_client(void *arg) {
         //클라이언트 소켓으로부터 send된 데이터를 수신, 성공 시 읽은 바이트 수를 리턴, 데이터 들어올 때까지 대기(블로킹모드)
         //클라이언트가 연결을 종료하면 0이 되고 while문 빠져나감
         buffer[bytes_read] = '\0';
-        printf("Received: %s", buffer); // 서버 터미널에 출력
+        printf("%s", buffer); // 서버 터미널에 출력
 
         pthread_mutex_lock(&mutex);
         for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -32,6 +35,12 @@ void *handle_client(void *arg) {
             }
         }
         pthread_mutex_unlock(&mutex);
+        time_t t = time(NULL);
+        struct tm tm = *localtime(&t);
+        char chat[BUFFER_SIZE];
+        int chat_len;
+        chat_len = sprintf(chat, "(%04d-%02d-%02d %02d:%02d:%02d) %s",tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, buffer);
+        write(fd, chat, chat_len);
     }
 
     pthread_mutex_lock(&mutex);
@@ -52,6 +61,13 @@ int main() {
     int server_socket, new_socket; //서버 소켓, 클라이언트 소켓 디스크립터
     struct sockaddr_in server_addr, client_addr; //소켓을 바인드 할 때 특성으로 넣을 구조체(?), 소켓의 주소 정보가 저장되는 구조체
     socklen_t addr_len = sizeof(client_addr); //위 구조체 크기
+
+    if((fd = open("log.txt", O_RDWR|O_APPEND, 0666)) == -1) { //log를 저장할 "log.txt" 열기
+        if((fd = open("log.txt", O_RDWR|O_CREAT, 0666)) == -1) { //"log.txt" 없으면 생성
+            perror("LOG file open failed");
+            exit(EXIT_FAILURE);
+        }
+    }
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0); //서버 소켓 만들기, IPv4 프로토콜, TCP방식
     if (server_socket == -1) {
@@ -105,7 +121,7 @@ int main() {
             printf("New client connected.\n");
         }
     }
-
+    close(fd);
     close(server_socket);
     return 0;
 }

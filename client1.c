@@ -21,10 +21,11 @@ void *receive_messages(void *arg) {
     return NULL;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     int client_socket;
     struct sockaddr_in server_addr;
     char buffer[BUFFER_SIZE];
+    char chat[BUFFER_SIZE];
 
     client_socket = socket(AF_INET, SOCK_STREAM, 0); //클라이언트 소켓 생성
     if (client_socket == -1) {
@@ -49,7 +50,9 @@ int main() {
 
     while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
         //표준입력으로 메세지를 입력받음, 이후 입력 대기상태
-        send(client_socket, buffer, strlen(buffer), 0); //입력받은 메세지를 자기 자신 소켓으로 전달
+
+        sprintf(chat, "[%s] %s", argv[1], buffer);
+        send(client_socket, chat, strlen(chat), 0); //입력받은 메세지를 자기 자신 소켓으로 전달
     }
 
     close(client_socket);
