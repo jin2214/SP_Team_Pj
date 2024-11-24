@@ -8,6 +8,20 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 
+//명령어 이름 설정
+char quit[] = "!quit\n";
+char help[] = "!help\n";
+char search[] = "!search\n";
+char showall[] = "!showall\n";
+
+//!help 명령어시 출력되는 메세지
+char manual[] = "\n*********************manual*********************\n\n\
+ !help -> Show command manual.\n\
+ !quit -> Close chatting application.\n\
+ !search -> Search old chat history.\n\
+ !showall -> Show all old chat history\n\
+\n************************************************\n\n";
+
 void *receive_messages(void *arg) {
     int socket = *(int *)arg;
     char buffer[BUFFER_SIZE];
@@ -25,7 +39,7 @@ int main(int argc, char *argv[]) {
     int client_socket;
     struct sockaddr_in server_addr;
     char buffer[BUFFER_SIZE];
-    char chat[BUFFER_SIZE];
+    char chat[BUFFER_SIZE]; //이름과 내용을 함께 전송할 문자열
 
     client_socket = socket(AF_INET, SOCK_STREAM, 0); //클라이언트 소켓 생성
     if (client_socket == -1) {
@@ -51,8 +65,44 @@ int main(int argc, char *argv[]) {
     while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
         //표준입력으로 메세지를 입력받음, 이후 입력 대기상태
 
-        sprintf(chat, "[%s] %s", argv[1], buffer);
-        send(client_socket, chat, strlen(chat), 0); //입력받은 메세지를 자기 자신 소켓으로 전달
+        //입력받은 메세지가 quit 명령어인지 구분
+        if(!strcmp(buffer, quit)) {
+            //quit 명령어라면 quit명령어만 서버로 전송
+            send(client_socket, buffer, strlen(buffer), 0);
+            break; //while문 탈출 -> 연결 종료
+        }
+
+        //입력받은 메세지가 help 명령어라면 manual 출력
+        else if(!strcmp(buffer, help)) {
+            printf(manual);
+        }
+
+        //입력받은 메세지가 search 명령어인지 구분
+        else if(!strcmp(buffer, search)) {
+            //search 명령어라면 search명령어 서버로 전송
+            send(client_socket, buffer, strlen(buffer), 0);
+            memset(buffer, 0, sizeof(buffer)); //buffer 초기화
+
+            //search 할 키워드 입력 받음
+            printf("Enter keyword to search: ");
+            fgets(buffer, sizeof(buffer), stdin);
+            //키워드 서버로 전송
+            send(client_socket, buffer, strlen(buffer), 0);
+        }
+
+        //입력받은 메세지가 showall 명령어인지 구분
+        else if(!strcmp(buffer, showall)) {
+            //showall 명령어라면 showall명령어만 서버로 전송
+            send(client_socket, buffer, strlen(buffer), 0);
+        }
+
+        //입력된 메세지가 명령어가 아니면
+        else{
+            sprintf(chat, "[%s] %s", argv[1], buffer); //chat 문자열에 [이름] 내용 저장
+            send(client_socket, chat, strlen(chat), 0); //입력받은 메세지를 자기 자신 소켓으로 전달
+        }
+        memset(buffer, 0, sizeof(buffer)); //buffer 초기화
+        memset(chat, 0, sizeof(chat)); //chat 초기화
     }
 
     close(client_socket);
