@@ -31,7 +31,7 @@ void *search_func(void *arg) {
     char end[] = "\n************************************************\n\n";
 
     if (recv(client_socket, keyword, sizeof(keyword), 0) > 0){ // 클라이언트에게 키워드 받음
-        printf("Searching for keyword: %s\n", keyword); //서버 터미널에 출력 
+        printf("\nSearching for keyword: %s", keyword); //서버 터미널에 출력 
         keyword[strcspn(keyword, "\n")] = '\0';  // 개행 문자 제거
 
         // 파일 포인터를 처음으로 이동
@@ -56,6 +56,7 @@ void *search_func(void *arg) {
                 }
             }
         }
+        printf("\n");
         send(client_socket, end, strlen(end), 0); // end 메세지 전송
         // 파일 포인터를 다시 파일 끝으로 이동
         lseek(fd, 0, SEEK_END);
