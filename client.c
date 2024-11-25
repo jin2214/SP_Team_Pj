@@ -5,7 +5,6 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define PORT 8080
 #define BUFFER_SIZE 1024
 
 void *receive_messages(void *arg);
@@ -18,12 +17,26 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 // ~~~~ : 전체 채팅
 //----------------------------------------------
 
+char manual[] = "\n*********************manual*********************\n\
+ !help -> Show command manual.\n\
+ !quit -> Close chatting application.\n\
+ !search -> Search old chat history.    [Usage: !search KEYWORD]\n\
+ !showall -> Show all old chat history\n\
+ !info -> Show all clients and positions\n\
+ !position -> Change position    [Usage: !position POSITION]\n\
+************************************************\n\n";
+
 int main(int argc, char *argv[]) { // 실행파일 arg[1]으로 user name, arg[2]로 server IP, arg[3]로 server port를 받음
     int client_socket;
     struct sockaddr_in server_addr;
     char buffer[BUFFER_SIZE];
     char chat[BUFFER_SIZE];
 
+    if (argc != 4) {
+        printf("Usage: [filename] [name] [ip address] [port number]\n");
+        exit(-1);
+    }
+    
     client_socket = socket(AF_INET, SOCK_STREAM, 0); //클라이언트 소켓 생성
     if (client_socket == -1) {
         perror("Socket creation failed");
@@ -31,7 +44,7 @@ int main(int argc, char *argv[]) { // 실행파일 arg[1]으로 user name, arg[2
     }
 
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(atoi(argv[3])); // 같은 컴퓨터 내 통신 전용 값
+    server_addr.sin_port = htons(atoi(argv[3])); // 서버 포트주소로 변경
     server_addr.sin_addr.s_addr = inet_addr(argv[2]); //로컬 호스트의 IP주소로 연결하겠다는 뜻, 다른 컴퓨터라면 서버 컴퓨터의 IP주소를 입력해야 함
 
     if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
@@ -41,6 +54,7 @@ int main(int argc, char *argv[]) { // 실행파일 arg[1]으로 user name, arg[2
     }
 
     printf("Connected to server. Type messages and press Enter to send.\n");
+    printf(manual);
 
     // server client 구조체에 이름 저장하기 위해 사용
     write(client_socket, argv[1], strlen(argv[1]));
@@ -56,9 +70,14 @@ int main(int argc, char *argv[]) { // 실행파일 arg[1]으로 user name, arg[2
          size_t len = strlen(buffer);
          buffer[len - 1] = '\0'; //fgets로 받은 개행을 제거함
 
+        if (!strcmp(buffer, "!help"))
+        {
+            printf(manual);
+            continue;
+        }
          sprintf(chat, "%s", buffer);
          send(client_socket, chat, strlen(chat), 0); //입력받은 메세지를 자기 자신 소켓으로 전달
-         if (strcmp(buffer, "#quit") == 0)
+         if (strcmp(buffer, "!quit") == 0)
             break;
     }
 

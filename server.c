@@ -7,14 +7,13 @@
 #include <fcntl.h>
 #include <time.h>
 
-#define PORT 8080
-#define MAX_CLIENTS 100
+#define MAX_CLIENTS 10
 #define MAX_CHARS 100
 #define BUFFER_SIZE 1024
 #define INVALID_SOCKET -1
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //쓰레드 간에 공유 데이터 동기화를 위해 사용, mutex초기화
-int fd = 0;
+int fd = 0; //대화 내용 저장할 파일 디스크립터
 
 // client 구조체
 typedef struct client_List{
@@ -29,14 +28,23 @@ client_List client_list[MAX_CLIENTS]; // client info를 저장하는 구조체 �
 
 
 void *handle_client(client_List *client); // client 관리 함수
-void    info(client_List *client); // 현재 접속 중인 client 출력
-
+void info(client_List *client); // 현재 접속 중인 client 출력
+void change_position(char *token, client_List *client);
+void showall(client_List *client);
+void search_func(char *token, client_List *client);
+void syntax_error_print(client_List *client);
+void server_quit(void *arg);
 
 int main(int argc, char *argv[]) {
     int server_socket, new_socket; //서버 소켓, 클라이언트 소켓 디스크립터
     struct sockaddr_in server_addr, client_addr; //소켓을 바인드 할 때 특성으로 넣을 구조체(?), 소켓의 주소 정보가 저장되는 구조체
     socklen_t addr_len = sizeof(client_addr); //위 구조체 크기
     char buf1[MAX_CHARS]; //client_list에 정보 넣을 때 주로 사용
+
+    if (argc != 2) {
+        printf("Usage: [filename] [port number]\n");
+        exit(-1);
+    }
 
     if((fd = open("log.txt", O_RDWR|O_APPEND, 0666)) == -1) { //log를 저장할 "log.txt" 열기
         if((fd = open("log.txt", O_RDWR|O_CREAT, 0666)) == -1) { //"log.txt" 없으면 생성
@@ -71,6 +79,11 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Server listening on port %d...\n", atoi(argv[1]));
+
+    // todo 서버에서 종료할 수 있도록 함
+    pthread_t server_thread;
+    pthread_create(&server_thread, NULL, server_quit, NULL);
+    pthread_detach(server_thread);
 
     while (1) {
         new_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_len); //서버 소켓 대기열에 연결 요청이 있으면 새로운 소켓으로 할당(클라이언트 요청)
@@ -146,23 +159,61 @@ void *handle_client(client_List *client) {
         printf("%s\n", buffer2);
 
         // 명령어
-        if(!strncmp(buffer1, "#quit", 5))
+        if(!strncmp(buffer1, "!quit", 5))
         {
-            send(client->socket_num, "exit.... end", 12, 0);
+            send(client->socket_num, "exit.... end", 12, 0);//이거 어차피 출력되기전에 클라이언트 프로세스 종료됨
             break;
         }
 
-        if(!strncmp(buffer1, "#info", 5))
+        else if(!strncmp(buffer1, "!showall", 8))
+        {
+            pthread_mutex_lock(&mutex);
+            showall(client);
+            pthread_mutex_unlock(&mutex);
+            continue;
+        }
+
+        else if(!strncmp(buffer1, "!info", 5))
         {
             info(client);
             continue;
         }
 
-        char *token = strtok(buffer1, " ");
-        if(!strncmp(token, "#position", 9))
+        else if(!strncmp(buffer1, "!position", 9))
         {
+            if (!strchr(buffer1, ' '))
+            {
+                syntax_error_print(client);
+                continue;
+            }
+            char *token = strtok(buffer1, " ");
     	    token = strtok(NULL, "\0");
+            if (token == NULL)
+            {
+                syntax_error_print(client);
+                continue;
+            }
             change_position(token, client);
+            continue;
+        }
+        
+        else if(!strncmp(buffer1, "!search", 7))
+        {
+            if (!strchr(buffer1, ' '))
+            {
+                syntax_error_print(client);
+                continue;
+            }
+            char *token = strtok(buffer1, " ");
+    	    token = strtok(NULL, "\0");
+            if (token == NULL)
+            {
+                syntax_error_print(client);
+                continue;
+            }
+            pthread_mutex_lock(&mutex);
+            search_func(token, client);
+            pthread_mutex_unlock(&mutex);
             continue;
         }
         
@@ -171,7 +222,7 @@ void *handle_client(client_List *client) {
         // #info 값이 있다면 이를 인식하고 접속되어 있는 user들의 정보 출력하도록 설정
         // #position ~~ 값이 있다면 이를 인식하고 해당 user 구조체 멤버 변수에 position정보 입력        
 
-        pthread_mutex_lock(&mutex); // 여러 thread가 공유하는 함수기에 mutax_lock필요
+        pthread_mutex_lock(&mutex); // 여러 thread가 공유하는 함수기에 mutex_lock필요
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (client_list[i].socket_num != INVALID_SOCKET && client_list[i].socket_num != client->socket_num) {
                 //클라이언트 소켓이 할당되어 있는 만큼, 자기 자신 클라이언트에게는 전송안함
@@ -184,7 +235,7 @@ void *handle_client(client_List *client) {
         struct tm tm = *localtime(&t);
         char chat[BUFFER_SIZE];
         int chat_len;
-        chat_len = sprintf(chat, "(%04d-%02d-%02d %02d:%02d:%02d) %s",tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, buffer2);
+        chat_len = sprintf(chat, "(%04d-%02d-%02d %02d:%02d:%02d) %s\n",tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, buffer2);
         write(fd, chat, chat_len); // sprintf로 chat에 현재 날짜와 전송된 문자 저장한 뒤에 파일에 해당 메세지 저장함
     }
 
@@ -203,16 +254,13 @@ void *handle_client(client_List *client) {
     return NULL;
 }
 
-void    info(client_List *client)
+void info(client_List *client)
 {
     char buf[BUFFER_SIZE];
+    char start[] = "\n********************User info********************\n";
+    char end[] = "\n************************************************\n";
 
-    sprintf(buf, "List of connected users\n");
-    send(client->socket_num, buf, strlen(buf), 0);
-
-    sprintf(buf, "----------------------------------------\n");
-    send(client->socket_num, buf, strlen(buf), 0);
-
+    send(client->socket_num, start, strlen(start), 0); 
     for(int i = 0; i < MAX_CLIENTS; i ++)
     {
         if (client_list[i].socket_num != INVALID_SOCKET)
@@ -221,17 +269,17 @@ void    info(client_List *client)
             send(client->socket_num, buf, strlen(buf), 0);
         }
     }
-
-    sprintf(buf, "----------------------------------------");
-    send(client->socket_num, buf, strlen(buf), 0);
+    send(client->socket_num, end, strlen(end), 0);
 }
 
-
-void    change_position(char *token, client_List *client)
+void change_position(char *token, client_List *client)
 {
     char previous_position[BUFFER_SIZE];
     char buf[BUFFER_SIZE];
+    char start[] = "\n********************Change position********************\n";
+    char end[] = "\n************************************************\n";
 
+    send(client->socket_num, start, strlen(start), 0);
     strcpy(previous_position, client->position_description); // 이전 position 저장
     strcpy(client->position_description, token); // 새로운 포지션 저장
 
@@ -241,6 +289,89 @@ void    change_position(char *token, client_List *client)
         {
             sprintf(buf, "%s's position : [%s] -> [%s]", client->name, previous_position, client->position_description);
             send(client_list[i].socket_num, buf, strlen(buf), 0);
+        }
+    }
+    send(client->socket_num, end, strlen(end), 0);
+}
+
+void showall(client_List *client) 
+{
+    char buf[BUFFER_SIZE];
+    int len = 0;
+
+    char start[] = "\n********************Show all Texts********************\n";
+    char end[] = "\n************************************************\n";
+
+    lseek(fd, 0, SEEK_SET);
+    send(client->socket_num, start, strlen(start), 0); // start 메세지 전송
+    while ((len = read(fd, buf, sizeof(buf))) > 0) {
+        send(client->socket_num, buf, len, 0); //읽어온 log 전송
+    }
+    send(client->socket_num, end, strlen(end), 0); // end 메세지 전송
+    lseek(fd, 0, SEEK_END);
+}
+
+void search_func(char *token, client_List *client)
+{
+    char buf[BUFFER_SIZE];
+    char line[BUFFER_SIZE];
+    char keyword[BUFFER_SIZE];
+    int len;
+    char start[] = "\n*********************Search*********************\n";
+    char end[] = "\n************************************************\n";
+
+    strcpy(keyword, token);
+    printf("\nSearching for keyword: %s\n", keyword); //서버 터미널에 출력 
+    //keyword[strcspn(keyword, "\n")] = '\0';  // 개행 문자 제거
+
+    // 파일 포인터를 처음으로 이동
+    lseek(fd, 0, SEEK_SET);
+    send(client->socket_num, start, strlen(start), 0); // start 메세지 전송
+    // 한 줄씩 파일을 읽으며 검색
+    int line_index = 0;  // line 버퍼의 인덱스
+    while ((len = read(fd, buf, sizeof(buf))) > 0) {
+        for (int i = 0; i < len; i++) {
+            if (buf[i] == '\n' || line_index == sizeof(line) - 1) { // buf에서 한 줄이 끝나거나 line 버퍼가 꽉차면
+                line[line_index] = '\0';  // 한 줄의 끝을 문자열로 처리
+                if (strstr(line, keyword) != NULL) { //키워드가 포함된 줄이라면
+                    printf("Line found: %s\n", line); //서버 터미널에 출력
+                    sprintf(line, "%s\n", line); //line 버퍼에 저장(\n 추가)
+                    send(client->socket_num, line, strlen(line), 0); //클라이언트에게 line 전송
+                }
+                line_index = 0;  // 다음 줄 처리를 위해 초기화
+                memset(line, 0, sizeof(line)); //line 버퍼 초기화
+
+            } else { //buf에서 한 줄이 끝나지 않았다면
+                line[line_index++] = buf[i]; //line 버퍼에 buf저장(한 글자씩 저장)
+            }
+        }
+    }
+    printf("\n");
+    send(client->socket_num, end, strlen(end), 0); // end 메세지 전송
+    // 파일 포인터를 다시 파일 끝으로 이동
+    lseek(fd, 0, SEEK_END);
+
+    return NULL;
+}
+
+void syntax_error_print(client_List *client) 
+{
+    char buffer3[BUFFER_SIZE];
+    memset(buffer3, 0, sizeof(buffer3));
+    sprintf(buffer3, "command not invalid please retry", 32);
+    send(client->socket_num, buffer3, strlen(buffer3), 0);
+}
+
+void server_quit(void *arg)
+{
+    char buffer[BUFFER_SIZE];
+    
+    while(fgets(buffer, sizeof(buffer), stdin) != NULL)
+    {
+        if (!strcmp(buffer, "!quit\n"))
+        {
+            printf("exit.... end");
+            exit(0);
         }
     }
 }
