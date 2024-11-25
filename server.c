@@ -227,13 +227,10 @@ void *handle_client(client_List *client) {
 void info(client_List *client)
 {
     char buf[BUFFER_SIZE];
+    char start[] = "\n********************User info********************\n";
+    char end[] = "\n************************************************\n";
 
-    sprintf(buf, "List of connected users\n");
-    send(client->socket_num, buf, strlen(buf), 0);
-
-    sprintf(buf, "----------------------------------------\n");
-    send(client->socket_num, buf, strlen(buf), 0);
-
+    send(client->socket_num, start, strlen(start), 0); 
     for(int i = 0; i < MAX_CLIENTS; i ++)
     {
         if (client_list[i].socket_num != INVALID_SOCKET)
@@ -242,16 +239,17 @@ void info(client_List *client)
             send(client->socket_num, buf, strlen(buf), 0);
         }
     }
-
-    sprintf(buf, "----------------------------------------");
-    send(client->socket_num, buf, strlen(buf), 0);
+    send(client->socket_num, end, strlen(end), 0);
 }
 
 void change_position(char *token, client_List *client)
 {
     char previous_position[BUFFER_SIZE];
     char buf[BUFFER_SIZE];
+    char start[] = "\n********************Change position********************\n";
+    char end[] = "\n************************************************\n";
 
+    send(client->socket_num, start, strlen(start), 0);
     strcpy(previous_position, client->position_description); // 이전 position 저장
     strcpy(client->position_description, token); // 새로운 포지션 저장
 
@@ -263,6 +261,7 @@ void change_position(char *token, client_List *client)
             send(client_list[i].socket_num, buf, strlen(buf), 0);
         }
     }
+    send(client->socket_num, end, strlen(end), 0);
 }
 
 void showall(client_List *client) 
@@ -270,8 +269,8 @@ void showall(client_List *client)
     char buf[BUFFER_SIZE];
     int len = 0;
 
-    char start[] = "\n********************show all********************\n\n";
-    char end[] = "\n************************************************\n\n";
+    char start[] = "\n********************Show all Texts********************\n";
+    char end[] = "\n************************************************\n";
 
     lseek(fd, 0, SEEK_SET);
     send(client->socket_num, start, strlen(start), 0); // start 메세지 전송
@@ -288,8 +287,8 @@ void search_func(char *token, client_List *client)
     char line[BUFFER_SIZE];
     char keyword[BUFFER_SIZE];
     int len;
-    char start[] = "\n*********************search*********************\n\n";
-    char end[] = "\n************************************************\n\n";
+    char start[] = "\n*********************Search*********************\n";
+    char end[] = "\n************************************************\n";
 
     strcpy(keyword, token);
     printf("\nSearching for keyword: %s\n", keyword); //서버 터미널에 출력 
