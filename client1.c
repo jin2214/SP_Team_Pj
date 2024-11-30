@@ -4,54 +4,120 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <time.h>
 
-#define PORT 8080
 #define BUFFER_SIZE 1024
 
-void *receive_messages(void *arg) {
-    int socket = *(int *)arg;
-    char buffer[BUFFER_SIZE];
-    int bytes_read;
+void *receive_messages(void *arg);
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+void send_message(const char *message);
+void display_manual_with_ui();
+void display_with_time(const char *message);
 
-    while ((bytes_read = recv(socket, buffer, sizeof(buffer), 0)) > 0) {
-        //서버에서 온 데이터를 자기 자신의 터미널에 출력
-        buffer[bytes_read] = '\0';
-        printf("%s", buffer);
-    }
-    return NULL;
-}
-
-int main() {
+int main(int argc, char *argv[]) {
     int client_socket;
     struct sockaddr_in server_addr;
     char buffer[BUFFER_SIZE];
+    const char *RESET = "\033[0m";
+    const char *RED = "\033[1;31m";
 
-    client_socket = socket(AF_INET, SOCK_STREAM, 0); //클라이언트 소켓 생성
+    if (argc != 4) {
+        printf("Usage: [filename] [name] [ip address] [port number]\n");
+        exit(-1);
+    }
+    
+    client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket == -1) {
         perror("Socket creation failed");
         exit(EXIT_FAILURE);
     }
 
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); //로컬 호스트의 IP주소로 연결하겠다는 뜻, 다른 컴퓨터라면 서버 컴퓨터의 IP주소를 입력해야 함
+    server_addr.sin_port = htons(atoi(argv[3]));
+    server_addr.sin_addr.s_addr = inet_addr(argv[2]);
 
     if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        //클라이언트 소켓에서 서버 소켓으로 연결 요청을 보냄 -> 서버의 listen중인 소켓의 대기열로 들어가는 듯 함
         perror("Connection failed");
         exit(EXIT_FAILURE);
     }
 
-    printf("Connected to server. Type messages and press Enter to send.\n");
+    printf("\033[31mConnected to server. Type messages and press Enter to send.\033[0m\n");
+
+    write(client_socket, argv[1], strlen(argv[1]));
 
     pthread_t thread;
-    pthread_create(&thread, NULL, receive_messages, (void *)&client_socket); //receive_message함수를 수행하는 쓰레드 생성, 인자로 클라이언트 소켓 주소 전달
+    pthread_create(&thread, NULL, receive_messages, (void *)&client_socket);
 
-    while (fgets(buffer, sizeof(buffer), stdin) != NULL) {
-        //표준입력으로 메세지를 입력받음, 이후 입력 대기상태
-        send(client_socket, buffer, strlen(buffer), 0); //입력받은 메세지를 자기 자신 소켓으로 전달
+    display_manual_with_ui();
+    printf("%s\nEnter a command or message: %s", RED, RESET); 
+    while (1) {   
+        if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+            size_t len = strlen(buffer);
+            buffer[len - 1] = '\0';  // 개행 문자 제거
+
+            if (strcmp(buffer, "!help") == 0) {
+                display_manual_with_ui();
+                continue;
+            }
+
+            if (strcmp(buffer, "!quit") == 0) {
+                send(client_socket, buffer, strlen(buffer), 0);
+                break;
+            }
+
+            send_message(buffer); 
+            send(client_socket, buffer, strlen(buffer), 0); 
+        }
     }
 
     close(client_socket);
     return 0;
+}
+
+void *receive_messages(void *arg) {
+    int socket = *(int *)arg;
+    char buffer[BUFFER_SIZE];
+    int bytes_read;
+    
+    while ((bytes_read = recv(socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
+        buffer[bytes_read] = '\0';
+        const char *CYAN = "\033[1;36m"; 
+        const char *RESET = "\033[0m"; 
+        printf("%sServer: ", CYAN); 
+        display_with_time(buffer);  // 시간 추가
+        printf("%s", RESET);  // 색상 초기화
+        fflush(stdout);
+    }
+    return NULL;
+}
+
+void send_message(const char *message) {
+    const char *RESET = "\033[0m";
+    const char *BLUE = "\033[1;34m";  
+    printf("%s[Sending]: ", BLUE);
+    display_with_time(message);  // 시간 추가
+    printf("%s", RESET);
+}
+
+// 명령어 및 UI 출력 함수
+void display_manual_with_ui() {
+    const char *GREEN = "\033[1;32m";
+    const char *RESET = "\033[0m";
+
+    printf("\n%s================ Chat Application ================%s\n", GREEN, RESET);
+    printf("Available Commands:\n");
+    printf("1. !help - Show command manual\n");
+    printf("2. !quit - Close the application\n");
+    printf("3. !position [POSITION] - Change your position\n");
+    printf("4. !info - Show all clients and positions\n");
+    printf("5. !search [KEYWORD] - Search old chat history\n");
+    printf("6. !showall - Show all chat history\n");
+    printf("\n**************************************************\n\n");
+}
+
+// 시간 표시를 추가한 메시지 출력 함수
+void display_with_time(const char *message) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    printf("[%02d:%02d:%02d] %s", t->tm_hour, t->tm_min, t->tm_sec, message);
 }
