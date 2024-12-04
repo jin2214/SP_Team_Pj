@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
     pthread_create(&thread, NULL, receive_messages, (void *)&client_socket);
 
     display_manual_with_ui();
-    printf("%s\nEnter a command or message: %s", RED, RESET); 
+    printf("%s\n>%s", RED, RESET); 
     while (1) {   
         if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
             size_t len = strlen(buffer);
@@ -57,6 +57,7 @@ int main(int argc, char *argv[]) {
 
             if (strcmp(buffer, "!help") == 0) {
                 display_manual_with_ui();
+                printf("%s\n>%s", RED, RESET);
                 continue;
             }
 
@@ -64,9 +65,10 @@ int main(int argc, char *argv[]) {
                 send(client_socket, buffer, strlen(buffer), 0);
                 break;
             }
-
-            send_message(buffer); 
-            send(client_socket, buffer, strlen(buffer), 0); 
+            printf("%s\n>%s", RED, RESET);             
+            //send_message(buffer); 
+            send(client_socket, buffer, strlen(buffer), 0);
+            
         }
     }
 
@@ -86,6 +88,7 @@ void *receive_messages(void *arg) {
         printf("%sServer: ", CYAN); 
         display_with_time(buffer);  // 시간 추가
         printf("%s", RESET);  // 색상 초기화
+        printf("\033[1;31m>\033[0m");
         fflush(stdout);
     }
     return NULL;
