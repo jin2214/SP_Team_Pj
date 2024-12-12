@@ -122,5 +122,5 @@ void display_manual_with_ui() {
 void display_with_time(const char *message) {
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
-    printf("[%02d:%02d:%02d] %s", t->tm_hour, t->tm_min, t->tm_sec, message);
+    printf("[%02d:%02d:%02d] %s\n", t->tm_hour, t->tm_min, t->tm_sec, message);
 }
